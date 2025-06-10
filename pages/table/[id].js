@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import useSWR from 'swr';
 import { supabase } from '../../lib/supabase';
 import BottomCart from '../../components/BottomCart';
-import { CakeIcon, ShoppingCartIcon } from '@heroicons/react/24/outline';
+import { CakeIcon, ShoppingCartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
@@ -16,18 +16,19 @@ export default function Table() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [error, setError] = useState(null);
-  const [addedItems, setAddedItems] = useState({}); // Track items showing "Added"
+  const [addedItems, setAddedItems] = useState({});
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [sliderRef, setSliderRef] = useState(null);
 
   // Check if user has an active pending order
   useEffect(() => {
-    // Clear localStorage on page load to prevent stale data
     localStorage.removeItem('orderId');
     localStorage.removeItem('appendOrder');
 
     async function checkActiveOrder() {
       if (!id) return;
       try {
-        // Check for pending orders for this table
         const { data, error } = await supabase
           .from('orders')
           .select('id, status')
@@ -35,21 +36,15 @@ export default function Table() {
           .eq('status', 'pending')
           .order('created_at', { ascending: false })
           .limit(1);
-        if (error) {
-          console.error('Error checking orders:', error.message);
-          throw error;
-        }
-        console.log('Pending orders found for table', id, ':', data); // Debug log
+        if (error) throw error;
         if (data.length > 0) {
           const order = data[0];
-          console.log('Pending order found, redirecting to /order/', order.id);
           localStorage.setItem('orderId', order.id);
           router.replace(`/order/${order.id}`);
-        } else {
-          console.log('No pending orders found for table', id, ', allowing menu access');
         }
       } catch (err) {
         console.error('Error checking table orders:', err.message);
+        setError('Failed to check active orders. Please try again.');
       }
     }
     checkActiveOrder();
@@ -68,27 +63,30 @@ export default function Table() {
 
   // Fetch menu items
   const apiUrl = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-  const { data: menu, error: fetchError, isLoading } = useSWR(`${apiUrl}/api/menu`, fetcher);
+  const { data: menu, error: fetchError } = useSWR(`${apiUrl}/api/menu`, fetcher);
 
-  // Unique categories
-  const categories = ['All', ...new Set(menu?.map(item => item.category).filter(Boolean))];
-
-  // Filtered menu
-  const filteredMenu = selectedCategory === 'All' ? menu : menu?.filter(item => item.category === selectedCategory);
-
-  // Handle errors
+  // Handle menu errors
   useEffect(() => {
     if (fetchError) {
       setError('Failed to load menu. Please try again.');
     }
   }, [fetchError]);
 
-  // Add to cart with text flash
+  // Unique categories
+  const categories = ['All', ...new Set(menu?.map(item => item.category).filter(Boolean))];
+
+  // Filtered menu
+  const filteredMenu = menu
+    ? menu.filter(item => selectedCategory === 'All' || item.category === selectedCategory)
+    : [];
+
+  // Add to cart
   const addToCart = (item) => {
+    const wasEmpty = cart.length === 0;
     setAddedItems(prev => ({ ...prev, [item.id]: true }));
     setTimeout(() => {
       setAddedItems(prev => ({ ...prev, [item.id]: false }));
-    }, 1000); // Show "Added" for 1 second
+    }, 1000);
     setCart(prevCart => {
       const existingItem = prevCart.find(cartItem => cartItem.item_id === item.id);
       if (existingItem) {
@@ -110,24 +108,29 @@ export default function Table() {
         },
       ];
     });
-    setIsCartOpen(true);
-    console.log('Analytics - Item added:', { item_id: item.id, name: item.name, timestamp: new Date().toISOString() });
+    if (wasEmpty) {
+      setIsCartOpen(true);
+      setError('Item added to cart!');
+      setTimeout(() => setError(null), 3000);
+    }
   };
 
   // Place new order
   const placeOrder = async () => {
-    if (cart.length === 0) return alert('Cart is empty');
+    if (cart.length === 0) {
+      setError('Your cart is empty. Add items to place an order.');
+      setShowConfirm(false);
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
     try {
       setError(null);
-      console.log('PlaceOrder - API URL:', apiUrl);
-      console.log('PlaceOrder - Payload:', JSON.stringify({ table_id: parseInt(id), items: cart }));
       const response = await fetch(`${apiUrl}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_id: parseInt(id), items: cart }),
         signal: AbortSignal.timeout(30000),
       });
-      console.log('PlaceOrder - Response status:', response.status);
       const order = await response.json();
       if (!response.ok || !order.id) {
         throw new Error(order.error || `HTTP ${response.status}`);
@@ -135,27 +138,31 @@ export default function Table() {
       localStorage.setItem('orderId', order.id);
       setCart([]);
       setIsCartOpen(false);
+      setShowConfirm(false);
       router.replace(`/order/${order.id}`);
     } catch (err) {
-      console.error('PlaceOrder error:', err.message);
       setError(`Failed to place order: ${err.message}`);
+      setShowConfirm(false);
+      setTimeout(() => setError(null), 5000);
     }
   };
 
   // Update existing order
   const updateOrder = async () => {
-    if (cart.length === 0) return alert('Cart is empty');
+    if (cart.length === 0) {
+      setError('Your cart is empty. Add items to update the order.');
+      setShowConfirm(false);
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
     try {
       setError(null);
-      console.log('UpdateOrder - API URL:', `${apiUrl}/api/orders/${appendOrderId}`);
-      console.log('UpdateOrder - Payload:', JSON.stringify({ items: cart }));
       const response = await fetch(`${apiUrl}/api/orders/${appendOrderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: cart }),
         signal: AbortSignal.timeout(30000),
       });
-      console.log('UpdateOrder - Response status:', response.status);
       const order = await response.json();
       if (!response.ok || !order.id) {
         throw new Error(order.error || `HTTP ${response.status}`);
@@ -166,11 +173,20 @@ export default function Table() {
       localStorage.setItem('orderId', order.id);
       setCart([]);
       setIsCartOpen(false);
+      setShowConfirm(false);
       router.replace(`/order/${order.id}`);
     } catch (err) {
-      console.error('UpdateOrder error:', err.message);
       setError(`Failed to update order: ${err.message}`);
+      setShowConfirm(false);
+      setTimeout(() => setError(null), 5000);
     }
+  };
+
+  // Handle confirmation
+  const handleConfirm = (action) => {
+    setConfirmAction(() => action);
+    setShowConfirm(true);
+    setIsCartOpen(false); // Minimize cart
   };
 
   // Toggle cart visibility
@@ -178,92 +194,193 @@ export default function Table() {
     setIsCartOpen(prev => !prev);
   };
 
-  if (isLoading) return <div className="text-center mt-10" role="status">Loading menu...</div>;
-  if (error) return <div className="text-center mt-10 text-red-500" role="alert">{error}</div>;
+  // Scroll slider
+  const scrollLeft = () => {
+    if (sliderRef) sliderRef.scrollBy({ left: -100, behavior: 'smooth' });
+  };
+  const scrollRight = () => {
+    if (sliderRef) sliderRef.scrollBy({ left: 100, behavior: 'smooth' });
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 relative">
-      {/* Top-Right Cart Icon */}
-      {cart.length > 0 && (
-        <button
-          className="fixed top-4 right-4 bg-blue-500 text-white p-2 rounded-full shadow-lg hover:bg-blue-600 z-50"
-          onClick={toggleCart}
-          aria-label="Toggle cart"
+    <section className="min-h-screen bg-gray-50 p-4 relative">
+      {/* Toast Notification */}
+      {error && (
+        <div
+          className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-[110] flex items-center gap-2 animate-fade-in ${
+            error.includes('added') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-800 font-semibold'
+          }`}
+          role="alert"
         >
-          <ShoppingCartIcon className="h-6 w-6" />
+          <p>{error}</p>
+          <button
+            className="text-sm font-medium hover:underline"
+            onClick={() => setError(null)}
+            aria-label="Dismiss notification"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {showConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]" role="dialog">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-sm w-full">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+              {isAppending ? 'Confirm Order Changes' : 'Confirm Order'}
+            </h2>
+            <p className="text-gray-700 mb-6">
+              {isAppending
+                ? `Save changes to order for Table ${id} with ${cart.length} items?`
+                : `Place order for Table ${id} with ${cart.length} items for ₹${cart
+                    .reduce((sum, item) => sum + item.price * (item.quantity || 1), 0)
+                    .toFixed(2)}?`}
+            </p>
+            <div className="flex gap-4">
+              <button
+                className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+                onClick={() => {
+                  setShowConfirm(false);
+                  setIsCartOpen(true); // Reopen cart
+                }}
+                aria-label="Cancel order action"
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                onClick={confirmAction}
+                aria-label={isAppending ? 'Confirm save order changes' : 'Confirm place order'}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top-Right Cart Icon */}
+      <button
+        className={`fixed top-4 right-4 text-white p-3 rounded-full shadow-lg z-[90] transition-colors ${
+          cart.length > 0 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 hover:bg-gray-400'
+        }`}
+        onClick={toggleCart}
+        aria-label={`View cart with ${cart.reduce((sum, item) => sum + (item.quantity || 1), 0)} items`}
+        title="View cart"
+      >
+        <ShoppingCartIcon className="h-6 w-6" />
+        {cart.length > 0 && (
           <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
             {cart.reduce((sum, item) => sum + (item.quantity || 1), 0)}
           </span>
-        </button>
-      )}
+        )}
+      </button>
 
       {/* Welcome Message */}
-      <div className="flex items-center justify-center gap-2 mb-6">
-        <CakeIcon className="h-6 w-6 text-blue-500" />
-        <h1 className="text-2xl font-bold text-gray-800" aria-label="Welcome to Gsaheb Cafe">
-          Welcome to Valtri Labs Cafe
-        </h1>
-        <CakeIcon className="h-6 w-6 text-blue-500" />
-      </div>
+      <header className="flex items-center justify-center gap-2 mb-6">
+        <CakeIcon className="h-6 w-6 text-blue-500" aria-hidden="true" />
+        <h1 className="text-2xl font-bold text-gray-800">Welcome to Gsaheb Cafe</h1>
+        <CakeIcon className="h-6 w-6 text-blue-500" aria-hidden="true" />
+      </header>
 
       {/* Category Filters */}
-      <div className="mb-6 overflow-x-auto whitespace-nowrap pb-2" role="tablist" aria-label="Menu categories">
-        <div className="flex gap-2">
+      <div className="mb-6 relative max-w-2xl mx-auto">
+        <div
+          className="flex overflow-x-auto space-x-2 pb-2 -mx-4 px-4 scrollbar-hide bg-gradient-to-r from-transparent via-transparent to-gray-200"
+          ref={setSliderRef}
+          aria-label="Category slider"
+        >
           {categories.map(category => (
             <button
               key={category}
-              className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-transform duration-200 ${
                 selectedCategory === category
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+              } ${category === categories[0] ? 'animate-bounce-once' : ''}`}
               onClick={() => setSelectedCategory(category)}
-              role="tab"
               aria-selected={selectedCategory === category}
-              aria-controls="menu-items"
+              style={{ transform: selectedCategory === category ? 'scale(1.05)' : 'scale(1)' }}
             >
               {category}
             </button>
           ))}
         </div>
+        <button
+          className="hidden sm:block absolute left-0 top-1/2 -translate-y-1/2 bg-gray-200 text-gray-700 p-2 rounded-full hover:bg-gray-300"
+          onClick={scrollLeft}
+          aria-label="Scroll categories left"
+        >
+          <ChevronLeftIcon className="h-5 w-5" />
+        </button>
+        <button
+          className="hidden sm:block absolute right-0 top-1/2 -translate-y-1/2 bg-gray-200 text-gray-700 p-2 rounded-full hover:bg-gray-300"
+          onClick={scrollRight}
+          aria-label="Scroll categories right"
+        >
+          <ChevronRightIcon className="h-5 w-5" />
+        </button>
       </div>
 
       {/* Menu Items Grid */}
-      <div
-        id="menu-items"
-        className="grid grid-cols-2 md:grid-cols-3 gap-4"
-        role="region"
-        aria-live="polite"
-      >
+      <div id="menu-items" className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
         {filteredMenu?.length === 0 ? (
-          <p className="col-span-full text-center text-gray-500">No items in this category.</p>
+          <p className="col-span-full text-center text-gray-500">No items found.</p>
         ) : (
-          filteredMenu.map(item => (
-            <div
-              key={item.id}
-              className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            >
-              <img
-                src={item.image_url || 'https://images.unsplash.com/photo-1550547660-d9450f859349'}
-                alt={item.name}
-                className="w-full h-32 object-cover rounded-md mb-2"
-              />
-              <h2 className="font-semibold text-lg">{item.name}</h2>
-              <p className="text-sm text-gray-500">{item.category}</p>
-              <p className="text-sm font-medium">₹{item.price.toFixed(2)}</p>
-              <button
-                className={`mt-2 w-full py-2 rounded-lg text-white transition-colors duration-300 ${
-                  addedItems[item.id]
-                    ? 'bg-blue-500 hover:bg-blue-600'
-                    : 'bg-green-500 hover:bg-green-600'
-                }`}
-                onClick={() => addToCart(item)}
-                aria-label={addedItems[item.id] ? `${item.name} added to cart` : `Add ${item.name} to cart`}
+          filteredMenu.map(item => {
+            const cartItem = cart.find(cartItem => cartItem.item_id === item.id);
+            const quantity = cartItem ? cartItem.quantity || 1 : 0;
+            return (
+              <article
+                key={item.id}
+                className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 flex flex-col justify-between min-h-[300px]"
               >
-                {addedItems[item.id] ? 'Added' : 'Add to Cart'}
-              </button>
-            </div>
-          ))
+                <div>
+                  <img
+                    src={item.image_url || 'https://images.unsplash.com/photo-1550547660-d9450f859349'}
+                    alt={item.name}
+                    className="w-full h-32 object-cover rounded-md mb-2"
+                  />
+                  <h2
+                    className="font-semibold text-lg text-gray-800 h-12 line-clamp-2"
+                    title={item.name}
+                  >
+                    {item.name}
+                  </h2>
+                  <p className="text-sm text-gray-500">{item.category}</p>
+                  <p className="text-sm font-medium text-gray-800">₹{item.price.toFixed(2)}</p>
+                </div>
+                <div className="relative mt-auto">
+                  <button
+                    className={`w-full py-2 rounded-lg text-white transition-all duration-300 ${
+                      quantity > 0 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-500 hover:bg-green-600'
+                    }`}
+                    onClick={() => addToCart(item)}
+                    aria-label={quantity > 0 ? `${item.name} added to cart` : `Add ${item.name} to cart`}
+                  >
+                    <span className={quantity > 0 ? 'flex items-center justify-center gap-1' : ''}>
+                      {quantity > 0 ? (
+                        <>
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          </svg>
+                          Added
+                        </>
+                      ) : (
+                        'Add to Cart'
+                      )}
+                    </span>
+                  </button>
+                  {quantity > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      x{quantity}
+                    </span>
+                  )}
+                </div>
+              </article>
+            );
+          })
         )}
       </div>
 
@@ -271,10 +388,37 @@ export default function Table() {
       <BottomCart
         cart={cart}
         setCart={setCart}
-        onPlaceOrder={isAppending ? updateOrder : placeOrder}
+        onPlaceOrder={() => handleConfirm(isAppending ? updateOrder : placeOrder)}
         onClose={() => setIsCartOpen(false)}
         isOpen={isCartOpen}
       />
-    </div>
+
+      {/* Custom Styles */}
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.3s ease-in-out;
+        }
+        @keyframes bounce-once {
+          0% { transform: translateY(0); }
+          50% { transform: translateY(-5px); }
+          100% { transform: translateY(0); }
+        }
+        .animate-bounce-once {
+          animation: bounce-once 0.5s ease-in-out;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+          -webkit-overflow-scrolling: touch;
+        }
+      `}</style>
+    </section>
   );
 }
