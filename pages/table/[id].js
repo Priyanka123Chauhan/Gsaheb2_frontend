@@ -20,6 +20,7 @@ export default function Table() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [sliderRef, setSliderRef] = useState(null);
+  const [isScrolled, setIsScrolled] = useState(false);
 
   // Check if user has an active pending order
   useEffect(() => {
@@ -71,6 +72,17 @@ export default function Table() {
       setError('Failed to load menu. Please try again.');
     }
   }, [fetchError]);
+
+  // Track slider scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      if (sliderRef) {
+        setIsScrolled(sliderRef.scrollLeft > 0);
+      }
+    };
+    sliderRef?.addEventListener('scroll', handleScroll);
+    return () => sliderRef?.removeEventListener('scroll', handleScroll);
+  }, [sliderRef]);
 
   // Unique categories
   const categories = ['All', ...new Set(menu?.map(item => item.category).filter(Boolean))];
@@ -186,7 +198,7 @@ export default function Table() {
   const handleConfirm = (action) => {
     setConfirmAction(() => action);
     setShowConfirm(true);
-    setIsCartOpen(false); // Minimize cart
+    setIsCartOpen(false);
   };
 
   // Toggle cart visibility
@@ -242,7 +254,7 @@ export default function Table() {
                 className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition-colors"
                 onClick={() => {
                   setShowConfirm(false);
-                  setIsCartOpen(true); // Reopen cart
+                  setIsCartOpen(true);
                 }}
                 aria-label="Cancel order action"
               >
@@ -287,14 +299,16 @@ export default function Table() {
       {/* Category Filters */}
       <div className="mb-6 relative max-w-2xl mx-auto">
         <div
-          className="flex overflow-x-auto space-x-2 pb-2 -mx-4 px-4 scrollbar-hide bg-gradient-to-r from-transparent via-transparent to-gray-200"
+          className={`flex overflow-x-auto space-x-2 pb-2 -mx-4 px-4 scrollbar-hide ${
+            isScrolled ? 'bg-gradient-to-l from-gray-200 to-transparent' : 'bg-gradient-to-r from-transparent to-gray-200'
+          }`}
           ref={setSliderRef}
           aria-label="Category slider"
         >
           {categories.map(category => (
             <button
               key={category}
-              className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-transform duration-200 ${
+              className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-semibold transition-transform duration-200 ${
                 selectedCategory === category
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -321,12 +335,15 @@ export default function Table() {
         >
           <ChevronRightIcon className="h-5 w-5" />
         </button>
+        <p className="text-xs text-gray-500 mt-1 text-center animate-fade-in" id="slider-hint">
+          Scroll for more categories
+        </p>
       </div>
 
       {/* Menu Items Grid */}
-      <div id="menu-items" className="grid grid-cols-2 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+      <div id="menu-items" className="grid grid-cols-2 gap-3 max-w-2xl mx-auto">
         {filteredMenu?.length === 0 ? (
-          <p className="col-span-full text-center text-gray-500">No items found.</p>
+          <p className="col-span-2 text-center text-gray-500">No items found.</p>
         ) : (
           filteredMenu.map(item => {
             const cartItem = cart.find(cartItem => cartItem.item_id === item.id);
@@ -334,26 +351,26 @@ export default function Table() {
             return (
               <article
                 key={item.id}
-                className="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 flex flex-col justify-between min-h-[300px]"
+                className="bg-white p-3 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 flex flex-col justify-between min-h-[280px]"
               >
                 <div>
                   <img
                     src={item.image_url || 'https://images.unsplash.com/photo-1550547660-d9450f859349'}
                     alt={item.name}
-                    className="w-full h-32 object-cover rounded-md mb-2"
+                    className="w-full h-28 object-cover rounded-md mb-2"
                   />
                   <h2
-                    className="font-semibold text-lg text-gray-800 h-12 line-clamp-2"
+                    className="font-semibold text-base text-gray-800 line-clamp-2 mb-2"
                     title={item.name}
                   >
                     {item.name}
                   </h2>
-                  <p className="text-sm text-gray-500">{item.category}</p>
-                  <p className="text-sm font-medium text-gray-800">₹{item.price.toFixed(2)}</p>
+                  <p className="text-xs text-gray-500 block mb-1">{item.category}</p>
+                  <p className="text-xs font-medium text-gray-800">₹{item.price.toFixed(2)}</p>
                 </div>
                 <div className="relative mt-auto">
                   <button
-                    className={`w-full py-2 rounded-lg text-white transition-all duration-300 ${
+                    className={`w-full py-2 rounded-lg text-white text-sm transition-all duration-300 ${
                       quantity > 0 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-500 hover:bg-green-600'
                     }`}
                     onClick={() => addToCart(item)}
@@ -362,7 +379,7 @@ export default function Table() {
                     <span className={quantity > 0 ? 'flex items-center justify-center gap-1' : ''}>
                       {quantity > 0 ? (
                         <>
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                           </svg>
                           Added
@@ -400,7 +417,8 @@ export default function Table() {
           to { opacity: 1; transform: translateY(0); }
         }
         .animate-fade-in {
-          animation: fade-in 0.3s ease-in-out;
+          animation: fade-in 0.5s ease-in-out;
+          animation-fill-mode: forwards;
         }
         @keyframes bounce-once {
           0% { transform: translateY(0); }
@@ -417,6 +435,13 @@ export default function Table() {
           -ms-overflow-style: none;
           scrollbar-width: none;
           -webkit-overflow-scrolling: touch;
+        }
+        #slider-hint {
+          opacity: 1;
+          transition: opacity 0.3s ease;
+        }
+        .scrollbar-hide:not(:hover) #slider-hint {
+          opacity: ${isScrolled ? 0 : 1};
         }
       `}</style>
     </section>
