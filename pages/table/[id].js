@@ -10,27 +10,28 @@ const fetcher = (url) => fetch(url).then(res => res.json());
 export default function Table() {
   const router = useRouter();
   const { id } = router.query;
-  const [cart, setCartItems] = useState([]);
+  const [cart, setCart] = useState([]);
   const [isAppending, setIsAppending] = useState(false);
   const [appendOrderId, setAppendOrderId] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [isCartOpen, setIsOpenCartOpen] = useState(false);
-  const [error, setErrorOpen] = useState(null);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [error, setError] = useState(null);
   const [addedItems, setAddedItems] = useState({});
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [sliderRef, setSliderRef] = useState(null);
   const [isScrolled, setIsScrolled] = useState(false);
 
-  // Check if user has an active pending order table
+  // Check if user has an active pending order
   useEffect(() => {
     localStorage.removeItem('orderId');
     localStorage.removeItem('appendOrder');
+
     async function checkActiveOrder() {
       if (!id) return;
       try {
         const { data, error } = await supabase
-          .from('tableorders')
+          .from('orders')
           .select('id, status')
           .eq('table_id', parseInt(id))
           .eq('status', 'pending')
@@ -38,9 +39,8 @@ export default function Table() {
           .limit(1);
         if (error) throw error;
         if (data.length > 0) {
-          const orderId = data[0].id;
-          localStorage.setItem('orderId', orderId);
-          router.replace(`/order/${orderId}`);
+          localStorage.setItem('orderId', data[0].id);
+          router.replace(`/order/${data[0].id}`);
         }
       } catch (err) {
         console.error('Error checking table orders:', err.message);
@@ -120,7 +120,7 @@ export default function Table() {
       ];
     });
     if (wasEmpty) {
-      setIsOpenCartOpen(true);
+      setIsCartOpen(true);
       setError('Item added to cart!');
       setTimeout(() => setError(null), 3000);
     }
@@ -202,7 +202,7 @@ export default function Table() {
 
   // Toggle cart visibility
   const toggleCart = () => {
-    setIsOpenCartOpen(prev => !prev);
+    setIsCartOpen(prev => !prev);
   };
 
   // Scroll slider
@@ -335,7 +335,7 @@ export default function Table() {
           <ChevronRightIcon className="h-5 w-5" />
         </button>
         <p className="text-xs text-gray-500 mt-1 text-center animate-fade-in" id="slider-hint">
-          Scroll for more categories --&gt;&gt;
+          Scroll for more categories
         </p>
       </div>
 
@@ -378,7 +378,7 @@ export default function Table() {
                     <span className={quantity > 0 ? 'flex items-center justify-center gap-1' : ''}>
                       {quantity > 0 ? (
                         <>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                           </svg>
                           Added
@@ -436,11 +436,8 @@ export default function Table() {
           -webkit-overflow-scrolling: touch;
         }
         #slider-hint {
-          opacity: 1;
+          opacity: ${isScrolled ? '0' : '1'};
           transition: opacity 0.3s ease;
-        }
-        .scrollbar-hide:not(:hover) #slider-hint {
-          opacity: ${isScrolled ? 0 : 1};
         }
       `}</style>
     </section>
