@@ -18,10 +18,13 @@ export default function Waiter() {
   const [addedItems, setAddedItems] = useState({});
   const [pendingOrders, setPendingOrders] = useState([]);
   const [filterTableNumber, setFilterTableNumber] = useState('');
+  const [searchOrders, setSearchOrders] = useState('');
   const [editingOrder, setEditingOrder] = useState(null);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
   const itemsPerPage = 5;
 
   // Function to convert UTC to IST
@@ -38,13 +41,18 @@ export default function Waiter() {
   // Fetch pending orders
   const { data: ordersData, error: ordersError, isLoading: isOrdersLoading, mutate: mutateOrders } = useSWR(
     `${apiUrl}/api/orders?status=pending`,
-    fetcher
+    fetcher,
+    { refreshInterval: 30000 } // Poll every 30 seconds for real-time updates
   );
 
   // Update pending orders
   useEffect(() => {
     if (ordersData) {
       setPendingOrders(ordersData);
+      if (activeTab === 'pending-orders' && ordersData.length > pendingOrders.length) {
+        setError('New pending order received!');
+        setTimeout(() => setError(null), 3000);
+      }
     }
     if (ordersError) {
       console.error('Pending orders fetch error:', ordersError);
@@ -52,7 +60,7 @@ export default function Waiter() {
         setError('Failed to load pending orders. Please try again later.');
       }
     }
-  }, [ordersData, ordersError, activeTab]);
+  }, [ordersData, ordersError, activeTab, pendingOrders.length]);
 
   // Handle menu errors
   useEffect(() => {
@@ -132,11 +140,13 @@ export default function Waiter() {
         setError('Order placed successfully! Refreshing in 3 seconds...');
         setTimeout(() => window.location.reload(), 3000);
         mutateOrders();
+        setShowConfirm(false);
         return;
       } catch (err) {
         attempts++;
         if (attempts === maxRetries) {
           setError(`Failed to place order after ${maxRetries} attempts: ${err.message}`);
+          setShowConfirm(false);
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -209,16 +219,24 @@ export default function Waiter() {
         setError('Order updated successfully! Refreshing in 3 seconds...');
         setTimeout(() => window.location.reload(), 3000);
         mutateOrders();
+        setShowConfirm(false);
         return;
       } catch (err) {
         attempts++;
         if (attempts === maxRetries) {
           setError(`Failed to update order after ${maxRetries} attempts: ${err.message}`);
+          setShowConfirm(false);
           return;
         }
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
+  };
+
+  // Handle confirmation
+  const handleConfirm = (action) => {
+    setConfirmAction(() => action);
+    setShowConfirm(true);
   };
 
   // Sort and paginate orders
@@ -234,19 +252,18 @@ export default function Waiter() {
     currentPage * itemsPerPage
   );
 
-  // Filtered orders
-  const filteredOrders = filterTableNumber
-    ? paginatedOrders.filter((order) => order.table_id.toString() === filterTableNumber)
-    : paginatedOrders;
-
-  if (isMenuLoading && isOrdersLoading) {
-    return (
-      <div className="text-center mt-10" role="status">
-        <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-        <p className="mt-2 text-gray-600">Loading...</p>
-      </div>
-    );
-  }
+  // Filtered and searched orders
+  const filteredOrders = paginatedOrders.filter((order) => {
+    const matchesTable = filterTableNumber
+      ? order.table_id.toString() === filterTableNumber
+      : true;
+    const matchesSearch = searchOrders
+      ? order.order_number?.toString().includes(searchOrders) ||
+        order.items.some((item) => item.name.toLowerCase().includes(searchOrders.toLowerCase())) ||
+        (order.notes || '').toLowerCase().includes(searchOrders.toLowerCase())
+      : true;
+    return matchesTable && matchesSearch;
+  });
 
   return (
     <section className="min-h-screen bg-gray-50 p-4">
@@ -289,7 +306,7 @@ export default function Waiter() {
       {error && (
         <div
           className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in ${
-            error.includes('successfully') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            error.includes('successfully') || error.includes('received') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
           }`}
           role="alert"
           aria-live="assertive"
@@ -305,40 +322,76 @@ export default function Waiter() {
         </div>
       )}
 
+      {/* Confirmation Dialog */}
+      {showConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-sm w-full">
+            <h2 className="text-lg font-semibold text-gray-800 mb-4">
+              {editingOrder ? 'Confirm Order Changes' : 'Confirm Order'}
+            </h2>
+            <p className="text-gray-700 mb-6">
+              {editingOrder
+                ? `Save changes to Order #${editingOrder.orderId} for Table ${tableNumber} with ${cart.length} items?`
+                : `Place order for Table ${tableNumber} with ${cart.length} items for ₹${cart
+                    .reduce((sum, item) => sum + item.price * (item.quantity || 1), 0)
+                    .toFixed(2)}?`}
+            </p>
+            <div className="flex gap-4">
+              <button
+                className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+                onClick={() => setShowConfirm(false)}
+                aria-label="Cancel order action"
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                onClick={confirmAction}
+                aria-label={editingOrder ? 'Confirm save order changes' : 'Confirm place order'}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Take Order Panel */}
       {activeTab === 'take-order' && (
         <section id="take-order-panel" role="tabpanel" aria-labelledby="take-order">
-          {/* Table Number Input */}
-          <div className="mb-6">
-            <label htmlFor="table-number" className="block text-sm font-semibold text-gray-800 mb-2">
-              Table Number (1–30)
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                id="table-number"
-                value={tableNumber}
-                onChange={(e) => setTableNumber(e.target.value)}
-                className="w-full p-3 rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 bg-white text-gray-800 placeholder-gray-400 transition-all"
-                placeholder="Enter table number (1–30)"
-                min="1"
-                max="30"
-                required
-                aria-describedby="table-number-help"
-              />
-              <p id="table-number-help" className="mt-1 text-xs text-gray-500">
-                Enter a number between 1 and 30 for the table.
-              </p>
-              {tableNumber && (parseInt(tableNumber) < 1 || parseInt(tableNumber) > 30) && (
-                <p className="mt-1 text-xs text-red-500" aria-live="polite">
-                  Table number must be between 1 and 30.
+          {/* Sticky Table Number Input */}
+          <div className="sticky top-4 z-10 bg-gray-50 pb-4">
+            <div className="mb-6 max-w-2xl mx-auto">
+              <label htmlFor="table-number" className="block text-sm font-semibold text-gray-800 mb-2">
+                Table Number (1–30)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  id="table-number"
+                  value={tableNumber}
+                  onChange={(e) => setTableNumber(e.target.value)}
+                  className="w-full p-3 rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 bg-white text-gray-800 placeholder-gray-400 transition-all"
+                  placeholder="Enter table number (1–30)"
+                  min="1"
+                  max="30"
+                  required
+                  aria-describedby="table-number-help"
+                />
+                <p id="table-number-help" className="mt-1 text-xs text-gray-500">
+                  Enter a number between 1 and 30 for the table.
                 </p>
-              )}
+                {tableNumber && (parseInt(tableNumber) < 1 || parseInt(tableNumber) > 30) && (
+                  <p className="mt-1 text-xs text-red-500" aria-live="polite">
+                    Table number must be between 1 and 30.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Search Bar */}
-          <div className="mb-6">
+          <div className="mb-6 max-w-2xl mx-auto">
             <label htmlFor="search-bar" className="block text-sm font-semibold text-gray-800 mb-2">
               Search Menu
             </label>
@@ -357,7 +410,7 @@ export default function Waiter() {
           </div>
 
           {/* Category Filters */}
-          <div className="mb-6" role="tablist" aria-label="Menu categories">
+          <div className="mb-6 max-w-2xl mx-auto" role="tablist" aria-label="Menu categories">
             <div className="sm:hidden">
               <select
                 value={selectedCategory}
@@ -394,9 +447,16 @@ export default function Waiter() {
           {/* Menu Items Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" role="region" aria-live="polite">
             {isMenuLoading ? (
-              <div className="col-span-full flex flex-col items-center">
-                <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="mt-2 text-gray-600">Loading menu...</p>
+              <div className="col-span-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="bg-white p-4 rounded-lg shadow-md">
+                    <div className="w-full h-32 bg-gray-200 rounded-md animate-pulse"></div>
+                    <div className="mt-2 h-6 bg-gray-200 rounded w-3/4 animate-pulse"></div>
+                    <div className="mt-1 h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+                    <div className="mt-1 h-4 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+                    <div className="mt-2 h-10 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                ))}
               </div>
             ) : filteredMenu.length === 0 ? (
               <p className="col-span-full text-center text-gray-500">No items found.</p>
@@ -415,7 +475,7 @@ export default function Waiter() {
                   <p className="text-sm text-gray-500">{item.category}</p>
                   <p className="text-sm font-medium text-gray-800">₹{item.price.toFixed(2)}</p>
                   <button
-                    className={`mt-2 w-full py-2 rounded-lg text-white transition-all duration-300 ${
+                    className={`mt-2 w-full py-2 rounded-lg text-white transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                       addedItems[item.id]
                         ? 'bg-blue-500 hover:bg-blue-600'
                         : 'bg-green-500 hover:bg-green-600'
@@ -442,7 +502,7 @@ export default function Waiter() {
           </div>
 
           {/* Order Note */}
-          <div className="mt-6">
+          <div className="mt-6 max-w-2xl mx-auto">
             <label htmlFor="order-note" className="block text-sm font-semibold text-gray-800 mb-2">
               Order Note (Optional)
             </label>
@@ -466,14 +526,22 @@ export default function Waiter() {
       {activeTab === 'pending-orders' && (
         <section id="pending-orders-panel" role="tabpanel" aria-labelledby="pending-orders">
           {isOrdersLoading ? (
-            <div className="text-center mt-10" role="status">
-              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading pending orders...</p>
+            <div className="col-span-full space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-white p-6 rounded-lg shadow-md">
+                  <div className="h-6 bg-gray-200 rounded w-1/4 animate-pulse"></div>
+                  <div className="mt-2 h-4 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+                  <div className="mt-1 h-4 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+                  <div className="mt-4 h-6 bg-gray-200 rounded w-1/5 animate-pulse"></div>
+                  <div className="mt-2 h-4 bg-gray-200 rounded w-3/4 animate-pulse"></div>
+                  <div className="mt-4 h-10 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+                </div>
+              ))}
             </div>
           ) : (
             <>
               {/* Filter and Sort Controls */}
-              <div className="mb-6 flex flex-col sm:flex-row gap-4">
+              <div className="mb-6 flex flex-col sm:flex-row gap-4 max-w-2xl mx-auto">
                 <div className="flex-1">
                   <label htmlFor="filter-table-number" className="block text-sm font-semibold text-gray-800 mb-2">
                     Filter by Table Number
@@ -494,6 +562,23 @@ export default function Waiter() {
                   </p>
                 </div>
                 <div className="flex-1">
+                  <label htmlFor="search-orders" className="block text-sm font-semibold text-gray-800 mb-2">
+                    Search Orders
+                  </label>
+                  <input
+                    type="text"
+                    id="search-orders"
+                    value={searchOrders}
+                    onChange={(e) => setSearchOrders(e.target.value)}
+                    className="w-full p-3 rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 bg-white text-gray-800 placeholder-gray-400 transition-all"
+                    placeholder="Search by order #, item, or note..."
+                    aria-describedby="search-orders-help"
+                  />
+                  <p id="search-orders-help" className="mt-1 text-xs text-gray-500">
+                    Search orders by number, item name, or notes.
+                  </p>
+                </div>
+                <div className="flex-1">
                   <label htmlFor="sort-by" className="block text-sm font-semibold text-gray-800 mb-2">
                     Sort By
                   </label>
@@ -510,12 +595,16 @@ export default function Waiter() {
                       <option value="order_number">Order Number</option>
                     </select>
                     <button
-                      className="p-3 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                      className="p-3 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                       onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                       aria-label={`Sort ${sortOrder === 'asc' ? 'descending' : 'ascending'}`}
+                      aria-describedby="sort-order-help"
                     >
                       {sortOrder === 'asc' ? '↑' : '↓'}
                     </button>
+                    <p id="sort-order-help" className="sr-only">
+                      Sorts orders {sortOrder === 'asc' ? 'ascending' : 'descending'} by {sortBy === 'created_at' ? 'order time' : sortBy === 'table_id' ? 'table number' : 'order number'}.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -567,7 +656,7 @@ export default function Waiter() {
                           .toFixed(2)}
                       </p>
                       <button
-                        className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                        className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                         onClick={() => startEditingOrder(order)}
                         aria-label={`Edit order ${order.order_number || order.id}`}
                       >
@@ -585,9 +674,9 @@ export default function Waiter() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="mt-6 flex items-center justify-center gap-4">
+                <div className="mt-6 flex items-center justify-center gap-4" aria-live="polite">
                   <button
-                    className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                    className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                     onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                     disabled={currentPage === 1}
                     aria-label="Previous page"
@@ -598,7 +687,7 @@ export default function Waiter() {
                     Page {currentPage} of {totalPages}
                   </p>
                   <button
-                    className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                    className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:opacity-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                     onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                     disabled={currentPage === totalPages}
                     aria-label="Next page"
@@ -616,7 +705,7 @@ export default function Waiter() {
       <BottomCart
         cart={cart}
         setCart={setCart}
-        onPlaceOrder={editingOrder ? saveEditedOrder : placeOrder}
+        onPlaceOrder={() => handleConfirm(editingOrder ? saveEditedOrder : placeOrder)}
         onClose={() => {
           setIsCartOpen(false);
           if (editingOrder) {
@@ -633,19 +722,6 @@ export default function Waiter() {
         menu={menu || []}
       />
 
-      {/* Help Tooltip */}
-      <div className="fixed bottom-4 right-4 z-50">
-        <button
-          className="bg-blue-500 text-white p-2 rounded-full shadow-lg hover:bg-blue-600 transition-colors"
-          aria-label="Help and instructions"
-          onClick={() => alert('Help: Enter table number (1-30), search and filter menu, add items to cart, and place or edit orders. Use notes for special requests.')}
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M12 18h.01M12 3a9 9 0 100 18 9 9 0 000-18z" />
-          </svg>
-        </button>
-      </div>
-
       {/* Custom Styles */}
       <style jsx>{`
         @keyframes fade-in {
@@ -654,6 +730,14 @@ export default function Waiter() {
         }
         .animate-fade-in {
           animation: fade-in 0.3s ease-in-out;
+        }
+        .animate-pulse {
+          animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+          0% { opacity: 1; }
+          50% { opacity: 0.5; }
+          100% { opacity: 1; }
         }
       `}</style>
     </section>
