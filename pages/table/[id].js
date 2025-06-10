@@ -324,7 +324,7 @@ export default function Table() {
       </div>
 
       {/* Menu Items Grid */}
-      <div id="menu-items" className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+      <div id="menu-items" className="grid grid-cols-2 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
         {filteredMenu?.length === 0 ? (
           <p className="col-span-full text-center text-gray-500">No items found.</p>
         ) : (
