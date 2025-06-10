@@ -42,7 +42,7 @@ export default function Waiter() {
   const { data: ordersData, error: ordersError, isLoading: isOrdersLoading, mutate: mutateOrders } = useSWR(
     `${apiUrl}/api/orders?status=pending`,
     fetcher,
-    { refreshInterval: 30000 } // Poll every 30 seconds for real-time updates
+    { refreshInterval: 30000 }
   );
 
   // Update pending orders
@@ -237,6 +237,7 @@ export default function Waiter() {
   const handleConfirm = (action) => {
     setConfirmAction(() => action);
     setShowConfirm(true);
+    setIsCartOpen(false); // Minimize cart to show confirmation dialog
   };
 
   // Sort and paginate orders
@@ -305,7 +306,7 @@ export default function Waiter() {
       {/* Toast Notification */}
       {error && (
         <div
-          className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-fade-in ${
+          className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg z-[110] flex items-center gap-2 animate-fade-in ${
             error.includes('successfully') || error.includes('received') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
           }`}
           role="alert"
@@ -324,7 +325,7 @@ export default function Waiter() {
 
       {/* Confirmation Dialog */}
       {showConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]" role="dialog" aria-modal="true">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-sm w-full">
             <h2 className="text-lg font-semibold text-gray-800 mb-4">
               {editingOrder ? 'Confirm Order Changes' : 'Confirm Order'}
@@ -339,7 +340,10 @@ export default function Waiter() {
             <div className="flex gap-4">
               <button
                 className="flex-1 bg-gray-300 text-gray-800 py-2 rounded-lg hover:bg-gray-400 transition-colors"
-                onClick={() => setShowConfirm(false)}
+                onClick={() => {
+                  setShowConfirm(false);
+                  setIsCartOpen(true); // Reopen cart if canceled
+                }}
                 aria-label="Cancel order action"
               >
                 Cancel
