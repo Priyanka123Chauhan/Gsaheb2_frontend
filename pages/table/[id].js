@@ -116,15 +116,26 @@ export default function Table() {
     }
   };
 
+ 
   const placeOrder = async () => {
-    if (!cart.length) {
+    if (cart.length === 0) {
       setError('Your cart is empty.');
       setShowConfirm(false);
       return;
     }
 
     try {
-      const order = await placeNewOrder(parseInt(id), cart);
+      const response = await fetch(`${apiUrl}/api/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table_id: parseInt(id), items: cart }),
+      });
+
+      const order = await response.json();
+      if (!response.ok || !order.id) {
+        throw new Error(order.error || `HTTP ${response.status}`);
+      }
+
       localStorage.setItem('orderId', order.id);
       setCart([]);
       setIsCartOpen(false);
@@ -137,14 +148,24 @@ export default function Table() {
   };
 
   const updateOrder = async () => {
-    if (!cart.length) {
+    if (cart.length === 0) {
       setError('Your cart is empty.');
       setShowConfirm(false);
       return;
     }
 
     try {
-      const order = await updateExistingOrder(appendOrderId, cart);
+      const response = await fetch(`${apiUrl}/api/orders/${appendOrderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: cart }),
+      });
+
+      const order = await response.json();
+      if (!response.ok || !order.id) {
+        throw new Error(order.error || `HTTP ${response.status}`);
+      }
+
       localStorage.removeItem('appendOrder');
       setIsAppending(false);
       setAppendOrderId(null);
