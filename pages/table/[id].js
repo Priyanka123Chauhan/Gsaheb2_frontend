@@ -32,7 +32,6 @@ export default function Table() {
         const allowedPrefixes = ['2402:e280', '58.84'];
         const allowed = allowedPrefixes.some(prefix => ip?.startsWith(prefix));
         setIsAllowed(allowed);
-        window.location.reload(); 
 
       } catch (err) {
         console.error('IP check failed:', err);
