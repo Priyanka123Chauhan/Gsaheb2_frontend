@@ -40,8 +40,12 @@ export default function Table() {
         setChecking(false);
       }
     };
-    checkAccess();
-  }, []);
+checkAccess();
+  intervalId = setInterval(checkAccess, 5000);
+
+  return () => clearInterval(intervalId); // Cleanup on unmount
+  },
+  []);
 
   const { data: menu } = useSWR('menu', fetchMenu);
 
