@@ -50,8 +50,10 @@ export default function Table() {
 
   
   // ✅ Step 3: Load menu, cart, and handle logic
+  // const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || '';
+  // const { data: menu, error: fetchError } = useSWR(apiUrl ? `${apiUrl}/api/menu` : null, fetcher);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || '';
-  const { data: menu, error: fetchError } = useSWR(apiUrl ? `${apiUrl}/api/menu` : null, fetcher);
+  const { data: menu } = useSWR(apiUrl ? `${apiUrl}/api/menu` : null, fetcher);
 
   const categories = ['All', ...new Set(menu?.map(item => item.category).filter(Boolean))];
   const filteredMenu = menu
