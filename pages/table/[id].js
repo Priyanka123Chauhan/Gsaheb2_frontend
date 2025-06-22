@@ -3,11 +3,7 @@ import { useRouter } from 'next/router';
 import useSWR from 'swr';
 import { supabase } from '../../lib/supabase';
 import BottomCart from '../../components/BottomCart';
-import { fetchMenu, placeNewOrder } from '../../lib/api';
-
-// import { CakeIcon, ShoppingCartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-
-const fetcher = (url) => fetch(url).then(res => res.json());
+import { fetchMenu, placeNewOrder, updateExistingOrder } from '../../lib/api';
 
 export default function Table() {
   const router = useRouter();
@@ -22,53 +18,42 @@ export default function Table() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const sliderRef = useRef(null);
-  const [isScrolled, setIsScrolled] = useState(false);
   const [isAllowed, setIsAllowed] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  // ✅ Step 1: Check Client IP
-  const getClientIP = async () => {
-    try {
-      const res = await fetch('https://api64.ipify.org?format=json');
-      const data = await res.json();
-      return data.ip;
-    } catch (err) {
-      console.error('IP fetch error:', err);
-      return null;
-    }
-  };
-
   useEffect(() => {
     const checkAccess = async () => {
-      const ip = await getClientIP();
-      console.log('Client IP:', ip);
-      const allowedPrefixes = ['2402:e280', '58.84']; // Your café Wi-Fi prefixes
-      const isAllowed = allowedPrefixes.some(prefix => ip?.startsWith(prefix));
-      setIsAllowed(isAllowed);
-      setChecking(false);
+      try {
+        const res = await fetch('https://api64.ipify.org?format=json');
+        const data = await res.json();
+        const ip = data.ip;
+        const allowedPrefixes = ['2402:e280', '58.84'];
+        const allowed = allowedPrefixes.some(prefix => ip?.startsWith(prefix));
+        setIsAllowed(allowed);
+      } catch (err) {
+        console.error('IP check failed:', err);
+      } finally {
+        setChecking(false);
+      }
     };
     checkAccess();
   }, []);
 
-  
-  // ✅ Step 3: Load menu, cart, and handle logic
-  // const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || '';
-  // const { data: menu, error: fetchError } = useSWR(apiUrl ? `${apiUrl}/api/menu` : null, fetcher);
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || '';
   const { data: menu } = useSWR('menu', fetchMenu);
 
   const categories = ['All', ...new Set(menu?.map(item => item.category).filter(Boolean))];
   const filteredMenu = menu
     ? menu.filter(item => selectedCategory === 'All' || item.category === selectedCategory)
     : [];
-useEffect(() => {
-  const el = sliderRef.current;
-  const handleScroll = () => {
-    if (el) setIsScrolled(el.scrollLeft > 0);
-  };
-  el?.addEventListener('scroll', handleScroll);
-  return () => el?.removeEventListener('scroll', handleScroll);
-}, []);
+
+  useEffect(() => {
+    const el = sliderRef.current;
+    const handleScroll = () => {
+      if (el) el.scrollLeft > 0;
+    };
+    el?.addEventListener('scroll', handleScroll);
+    return () => el?.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     localStorage.removeItem('orderId');
@@ -95,7 +80,7 @@ useEffect(() => {
     }
 
     checkActiveOrder();
-  }, [id, router]);
+  }, [id]);
 
   useEffect(() => {
     const appendOrder = localStorage.getItem('appendOrder');
@@ -107,32 +92,21 @@ useEffect(() => {
     }
   }, []);
 
- 
   const addToCart = (item) => {
     const wasEmpty = cart.length === 0;
     setAddedItems(prev => ({ ...prev, [item.id]: true }));
     setTimeout(() => setAddedItems(prev => ({ ...prev, [item.id]: false })), 1000);
 
-    setCart(prevCart => {
-      const existingItem = prevCart.find(cartItem => cartItem.item_id === item.id);
-      if (existingItem) {
-        return prevCart.map(cartItem =>
+    setCart(prev => {
+      const exists = prev.find(cartItem => cartItem.item_id === item.id);
+      if (exists) {
+        return prev.map(cartItem =>
           cartItem.item_id === item.id
             ? { ...cartItem, quantity: (cartItem.quantity || 1) + 1 }
             : cartItem
         );
       }
-      return [
-        ...prevCart,
-        {
-          item_id: item.id,
-          name: item.name,
-          price: item.price,
-          category: item.category,
-          image_url: item.image_url,
-          quantity: 1,
-        },
-      ];
+      return [...prev, { ...item, item_id: item.id, quantity: 1 }];
     });
 
     if (wasEmpty) {
@@ -142,25 +116,15 @@ useEffect(() => {
     }
   };
 
-  const fetch  = async () => {
-    if (cart.length === 0) {
+  const placeOrder = async () => {
+    if (!cart.length) {
       setError('Your cart is empty.');
       setShowConfirm(false);
       return;
     }
 
     try {
-      const response = await fetch(`${apiUrl}/api/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table_id: parseInt(id), items: cart }),
-      });
-
-      const order = await response.json();
-      if (!response.ok || !order.id) {
-        throw new Error(order.error || `HTTP ${response.status}`);
-      }
-
+      const order = await placeNewOrder(parseInt(id), cart);
       localStorage.setItem('orderId', order.id);
       setCart([]);
       setIsCartOpen(false);
@@ -173,24 +137,14 @@ useEffect(() => {
   };
 
   const updateOrder = async () => {
-    if (cart.length === 0) {
+    if (!cart.length) {
       setError('Your cart is empty.');
       setShowConfirm(false);
       return;
     }
 
     try {
-      const response = await fetch(`${apiUrl}/api/orders/${appendOrderId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: cart }),
-      });
-
-      const order = await response.json();
-      if (!response.ok || !order.id) {
-        throw new Error(order.error || `HTTP ${response.status}`);
-      }
-
+      const order = await updateExistingOrder(appendOrderId, cart);
       localStorage.removeItem('appendOrder');
       setIsAppending(false);
       setAppendOrderId(null);
@@ -210,38 +164,68 @@ useEffect(() => {
     setIsCartOpen(false);
   };
 
-  const scrollLeft = () => sliderRef?.scrollBy({ left: -100, behavior: 'smooth' });
-  const scrollRight = () => sliderRef?.scrollBy({ left: 100, behavior: 'smooth' });
-
   return (
-
-    
     <section className="min-h-screen bg-gray-50 p-4 relative">
+      {checking ? (
+        <div className="min-h-screen flex items-center justify-center">Checking Wi-Fi...</div>
+      ) : !isAllowed ? (
+        <div className="fixed inset-0 bg-white flex flex-col justify-center items-center">
+          <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
+          <p className="text-sm text-gray-600 mb-4">Please connect to the café’s Wi-Fi.</p>
+          <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-4 py-2 rounded">
+            I’ve connected – Retry
+          </button>
+        </div>
+      ) : (
+        <>
+          {/* Header */}
+          <header className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-800">Welcome to Gsaheb Café</h1>
+          </header>
 
-{checking ? (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Checking Wi-Fi access...</p>
-      </div>
-    ) : !isAllowed ? (
-      <div className="fixed inset-0 bg-white flex flex-col justify-center items-center">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Access Restricted</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Please connect to the café’s Wi-Fi to access the menu.
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
-        >
-          I’ve connected – Retry
-        </button>
-      </div>
-    ) : (
-      <>
-        {/* Your full UI goes here */}
-      </>
-    )}
+          {/* Category Filter */}
+          <div className="overflow-x-auto flex gap-2 mb-4" ref={sliderRef}>
+            {categories.map(category => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`px-4 py-2 rounded ${selectedCategory === category ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
 
-      {/* Toast Error */}
+          {/* Menu Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            {filteredMenu?.map(item => (
+              <div key={item.id} className="bg-white p-3 rounded shadow">
+                <img src={item.image_url} alt={item.name} className="w-full h-24 object-cover rounded mb-2" />
+                <h3 className="font-semibold">{item.name}</h3>
+                <p className="text-sm text-gray-500">{item.category}</p>
+                <p className="text-sm font-bold">₹{item.price.toFixed(2)}</p>
+                <button
+                  onClick={() => addToCart(item)}
+                  className="w-full mt-2 bg-green-500 text-white py-1 rounded"
+                >
+                  Add to Cart
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Bottom Cart */}
+          <BottomCart
+            cart={cart}
+            setCart={setCart}
+            onPlaceOrder={() => handleConfirm(isAppending ? updateOrder : placeOrder)}
+            onClose={() => setIsCartOpen(false)}
+            isOpen={isCartOpen}
+          />
+        </>
+      )}
+
+      {/* Error Toast */}
       {error && (
         <div className="fixed top-4 right-4 p-4 rounded shadow-lg bg-red-100 text-red-800 z-50">
           {error}
@@ -249,68 +233,19 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Confirmation */}
+      {/* Confirmation Modal */}
       {showConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-40">
           <div className="bg-white p-6 rounded shadow-md w-full max-w-sm">
             <h2 className="text-lg font-bold mb-4">Confirm Order</h2>
             <p>{isAppending ? 'Update this order?' : 'Place this order?'}</p>
             <div className="mt-4 flex gap-4">
-              <button onClick={() => setShowConfirm(false)} className="flex-1 bg-gray-200 py-2 rounded">
-                Cancel
-              </button>
-              <button onClick={confirmAction} className="flex-1 bg-blue-600 text-white py-2 rounded">
-                Confirm
-              </button>
+              <button onClick={() => setShowConfirm(false)} className="flex-1 bg-gray-200 py-2 rounded">Cancel</button>
+              <button onClick={confirmAction} className="flex-1 bg-blue-600 text-white py-2 rounded">Confirm</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Header */}
-      <header className="text-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Welcome to Gsaheb Café</h1>
-      </header>
-
-      {/* Category Filter */}
-      <div className="overflow-x-auto flex gap-2 mb-4" ref={sliderRef}>
-        {categories.map(category => (
-          <button
-            key={category}
-            onClick={() => setSelectedCategory(category)}
-            className={`px-4 py-2 rounded ${selectedCategory === category ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-          >
-            {category}
-          </button>
-        ))}
-      </div>
-
-      {/* Menu Grid */}
-      <div className="grid grid-cols-2 gap-4">
-        {filteredMenu?.map(item => (
-          <div key={item.id} className="bg-white p-3 rounded shadow">
-            <img src={item.image_url} alt={item.name} className="w-full h-24 object-cover rounded mb-2" />
-            <h3 className="font-semibold">{item.name}</h3>
-            <p className="text-sm text-gray-500">{item.category}</p>
-            <p className="text-sm font-bold">₹{item.price.toFixed(2)}</p>
-            <button
-              onClick={() => addToCart(item)}
-              className="w-full mt-2 bg-green-500 text-white py-1 rounded"
-            >
-              Add to Cart
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* Bottom Cart */}
-      <BottomCart
-        cart={cart}
-        setCart={setCart}
-        onPlaceOrder={() => handleConfirm(isAppending ? updateOrder : placeOrder)}
-        onClose={() => setIsCartOpen(false)}
-        isOpen={isCartOpen}
-      />
     </section>
   );
 }
