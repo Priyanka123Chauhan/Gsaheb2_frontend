@@ -3,6 +3,8 @@ import { useRouter } from 'next/router';
 import useSWR from 'swr';
 import { supabase } from '../../lib/supabase';
 import BottomCart from '../../components/BottomCart';
+import { fetchMenu, placeNewOrder } from '../../lib/api';
+
 // import { CakeIcon, ShoppingCartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
@@ -53,7 +55,7 @@ export default function Table() {
   // const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || '';
   // const { data: menu, error: fetchError } = useSWR(apiUrl ? `${apiUrl}/api/menu` : null, fetcher);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || '';
-  const { data: menu } = useSWR(apiUrl ? `${apiUrl}/api/menu` : null, fetcher);
+  const { data: menu } = useSWR('menu', fetchMenu);
 
   const categories = ['All', ...new Set(menu?.map(item => item.category).filter(Boolean))];
   const filteredMenu = menu
@@ -140,7 +142,7 @@ useEffect(() => {
     }
   };
 
-  const placeOrder = async () => {
+  const fetch  = async () => {
     if (cart.length === 0) {
       setError('Your cart is empty.');
       setShowConfirm(false);
