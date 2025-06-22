@@ -41,9 +41,6 @@ export default function Table() {
       }
     };
 checkAccess();
-  intervalId = setInterval(checkAccess, 5000);
-
-  return () => clearInterval(intervalId); // Cleanup on unmount
   },
   []);
 
