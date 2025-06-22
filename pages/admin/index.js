@@ -21,7 +21,7 @@ export default function Admin() {
   const [orders, setOrders] = useState([]);
   const [paidOrders, setPaidOrders] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
-  const [newItem, setNewItem] = useState({ name: '', category: '', price: '', is_available: true });
+const [newItem, setNewItem] = useState({ name: '', price: '', is_available: true });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -440,16 +440,20 @@ export default function Admin() {
         .insert([
           {
             name: newItem.name,
-            category: newItem.category || '',
             price: parseFloat(newItem.price),
             is_available: newItem.is_available,
           },
         ])
         .select();
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase insert error:', error);
+        setError(`Failed to add item: ${error.message}`);
+        return;
+      }
       setMenuItems([...menuItems, data[0]]);
-      setNewItem({ name: '', category: '', price: '', is_available: true });
+      setNewItem({ name: '', price: '', is_available: true });
     } catch (err) {
+      console.error('Unexpected error in addMenuItem:', err);
       setError(`Failed to add item: ${err.message}`);
     }
   };
@@ -1304,16 +1308,6 @@ export default function Admin() {
                     onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
                     className="border p-2 rounded-md w-full"
                     aria-label="Item name input"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Category</label>
-                  <input
-                    type="text"
-                    value={newItem.category}
-                    onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-                    className="border p-2 rounded-md w-full"
-                    aria-label="Item category input"
                   />
                 </div>
                 <div>
