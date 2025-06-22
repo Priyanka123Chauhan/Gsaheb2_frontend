@@ -3,7 +3,9 @@ import { useRouter } from 'next/router';
 import useSWR from 'swr';
 import { supabase } from '../../lib/supabase';
 import BottomCart from '../../components/BottomCart';
-import { fetchMenu, placeNewOrder, updateExistingOrder } from '../../lib/api';
+import { CakeIcon, ShoppingCartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { fetchMenu } from '../../lib/api';
+
 
 export default function Table() {
   const router = useRouter();
@@ -116,26 +118,26 @@ export default function Table() {
     }
   };
 
- 
+  // Place new order
   const placeOrder = async () => {
     if (cart.length === 0) {
-      setError('Your cart is empty.');
+      setError('Your cart is empty. Add items to place an order.');
       setShowConfirm(false);
+      setTimeout(() => setError(null), 5000);
       return;
     }
-
     try {
+      setError(null);
       const response = await fetch(`${apiUrl}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_id: parseInt(id), items: cart }),
+        signal: AbortSignal.timeout(30000),
       });
-
       const order = await response.json();
       if (!response.ok || !order.id) {
         throw new Error(order.error || `HTTP ${response.status}`);
       }
-
       localStorage.setItem('orderId', order.id);
       setCart([]);
       setIsCartOpen(false);
@@ -144,31 +146,34 @@ export default function Table() {
     } catch (err) {
       setError(`Failed to place order: ${err.message}`);
       setShowConfirm(false);
+      setTimeout(() => setError(null), 5000);
     }
   };
 
+  // Update existing order
   const updateOrder = async () => {
     if (cart.length === 0) {
-      setError('Your cart is empty.');
+      setError('Your cart is empty. Add items to update the order.');
       setShowConfirm(false);
+      setTimeout(() => setError(null), 5000);
       return;
     }
-
     try {
+      setError(null);
       const response = await fetch(`${apiUrl}/api/orders/${appendOrderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: cart }),
+        signal: AbortSignal.timeout(30000),
       });
-
       const order = await response.json();
       if (!response.ok || !order.id) {
         throw new Error(order.error || `HTTP ${response.status}`);
       }
-
       localStorage.removeItem('appendOrder');
       setIsAppending(false);
       setAppendOrderId(null);
+      localStorage.setItem('orderId', order.id);
       setCart([]);
       setIsCartOpen(false);
       setShowConfirm(false);
@@ -176,13 +181,28 @@ export default function Table() {
     } catch (err) {
       setError(`Failed to update order: ${err.message}`);
       setShowConfirm(false);
+      setTimeout(() => setError(null), 5000);
     }
   };
 
+  // Handle confirmation
   const handleConfirm = (action) => {
     setConfirmAction(() => action);
     setShowConfirm(true);
     setIsCartOpen(false);
+  };
+
+  // Toggle cart visibility
+  const toggleCart = () => {
+    setIsCartOpen(prev => !prev);
+  };
+
+  // Scroll slider
+  const scrollLeft = () => {
+    if (sliderRef) sliderRef.scrollBy({ left: -100, behavior: 'smooth' });
+  };
+  const scrollRight = () => {
+    if (sliderRef) sliderRef.scrollBy({ left: 100, behavior: 'smooth' });
   };
 
   return (
