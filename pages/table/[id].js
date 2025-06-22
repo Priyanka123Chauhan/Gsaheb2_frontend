@@ -175,7 +175,6 @@ useEffect(() => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_id: parseInt(id), items: cart }),
-        signal: AbortSignal.timeout(30000),
       });
 
       const order = await response.json();
@@ -206,7 +205,6 @@ useEffect(() => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: cart }),
-        signal: AbortSignal.timeout(30000),
       });
 
       const order = await response.json();
