@@ -48,32 +48,7 @@ export default function Table() {
     checkAccess();
   }, []);
 
-  // ✅ Step 2: Conditional UI based on Wi-Fi
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Checking Wi-Fi access...</p>
-      </div>
-    );
-  }
-
-  if (!isAllowed) {
-    return (
-      <div className="fixed inset-0 bg-white flex flex-col justify-center items-center">
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Access Restricted</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Please connect to the café’s Wi-Fi to access the menu.
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-blue-600 text-white px-4 py-2 rounded"
-        >
-          I’ve connected – Retry
-        </button>
-      </div>
-    );
-  }
-
+  
   // ✅ Step 3: Load menu, cart, and handle logic
   const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || '';
   const { data: menu, error: fetchError } = useSWR(apiUrl ? `${apiUrl}/api/menu` : null, fetcher);
@@ -235,7 +210,33 @@ useEffect(() => {
   const scrollRight = () => sliderRef?.scrollBy({ left: 100, behavior: 'smooth' });
 
   return (
+
+    
     <section className="min-h-screen bg-gray-50 p-4 relative">
+
+{checking ? (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Checking Wi-Fi access...</p>
+      </div>
+    ) : !isAllowed ? (
+      <div className="fixed inset-0 bg-white flex flex-col justify-center items-center">
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Access Restricted</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Please connect to the café’s Wi-Fi to access the menu.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          I’ve connected – Retry
+        </button>
+      </div>
+    ) : (
+      <>
+        {/* Your full UI goes here */}
+      </>
+    )}
+
       {/* Toast Error */}
       {error && (
         <div className="fixed top-4 right-4 p-4 rounded shadow-lg bg-red-100 text-red-800 z-50">
