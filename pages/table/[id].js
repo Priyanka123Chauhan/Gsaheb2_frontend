@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import useSWR from 'swr';
 import { supabase } from '../../lib/supabase';
 import BottomCart from '../../components/BottomCart';
-import { CakeIcon, ShoppingCartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+// import { CakeIcon, ShoppingCartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 
 const fetcher = (url) => fetch(url).then(res => res.json());
 
@@ -19,7 +19,7 @@ export default function Table() {
   const [addedItems, setAddedItems] = useState({});
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
-  const [sliderRef, setSliderRef] = useState(null);
+  const sliderRef = useRef(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isAllowed, setIsAllowed] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -75,13 +75,21 @@ export default function Table() {
   }
 
   // ✅ Step 3: Load menu, cart, and handle logic
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
-  const { data: menu, error: fetchError } = useSWR(`${apiUrl}/api/menu`, fetcher);
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || '';
+  const { data: menu, error: fetchError } = useSWR(apiUrl ? `${apiUrl}/api/menu` : null, fetcher);
 
   const categories = ['All', ...new Set(menu?.map(item => item.category).filter(Boolean))];
   const filteredMenu = menu
     ? menu.filter(item => selectedCategory === 'All' || item.category === selectedCategory)
     : [];
+useEffect(() => {
+  const el = sliderRef.current;
+  const handleScroll = () => {
+    if (el) setIsScrolled(el.scrollLeft > 0);
+  };
+  el?.addEventListener('scroll', handleScroll);
+  return () => el?.removeEventListener('scroll', handleScroll);
+}, []);
 
   useEffect(() => {
     localStorage.removeItem('orderId');
@@ -120,14 +128,7 @@ export default function Table() {
     }
   }, []);
 
-  useEffect(() => {
-    const handleScroll = () => {
-      if (sliderRef) setIsScrolled(sliderRef.scrollLeft > 0);
-    };
-    sliderRef?.addEventListener('scroll', handleScroll);
-    return () => sliderRef?.removeEventListener('scroll', handleScroll);
-  }, [sliderRef]);
-
+ 
   const addToCart = (item) => {
     const wasEmpty = cart.length === 0;
     setAddedItems(prev => ({ ...prev, [item.id]: true }));
@@ -269,7 +270,7 @@ export default function Table() {
       </header>
 
       {/* Category Filter */}
-      <div className="overflow-x-auto flex gap-2 mb-4" ref={setSliderRef}>
+      <div className="overflow-x-auto flex gap-2 mb-4" ref={sliderRef}>
         {categories.map(category => (
           <button
             key={category}
