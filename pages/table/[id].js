@@ -4,7 +4,7 @@ import useSWR from 'swr';
 import { supabase } from '../../lib/supabase';
 import BottomCart from '../../components/BottomCart';
 import { CakeIcon, ShoppingCartIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-import { fetchMenu } from '../../lib/api';
+import { fetchMenu ,apiUrl } from '../../lib/api';
 
 
 export default function Table() {
