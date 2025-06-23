@@ -10,6 +10,15 @@ export default function WifiRequired() {
         <p className="text-gray-700 mt-4">
           You must be connected to the café Wi-Fi to access the menu.
         </p>
+    <button
+  onClick={() => {
+    window.location.href = 'intent:#Intent;action=android.settings.WIFI_SETTINGS;end';
+  }}
+  className="bg-blue-600 text-white px-4 py-2 rounded"
+>
+  Open Wi-Fi Settings
+</button>
+
       </div>
     </div>
   );
