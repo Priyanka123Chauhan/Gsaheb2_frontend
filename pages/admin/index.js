@@ -957,7 +957,6 @@ export default function Admin() {
                 {tab === 'Order History' && <ClockIcon className="h-5 w-5" />}
                 {tab === 'Menu Management' && <PlusIcon className="h-5 w-5" />}
                 {tab === 'Data Analytics' && <ChartBarIcon className="h-5 w-5" />}
-                {tab === 'Data Analytics' && <ChartBarIcon className="h-5 w-5" />}
 
                 {tab}
               </button>
