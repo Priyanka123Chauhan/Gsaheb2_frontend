@@ -40,6 +40,8 @@ export default function Table() {
       }
     };
 checkAccess();
+    const interval = setInterval(checkAccess, 8000); // recheck every 8 seconds
+    return () => clearInterval(interval);
   },
   []);
 
