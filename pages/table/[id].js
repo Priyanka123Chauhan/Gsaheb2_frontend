@@ -22,28 +22,40 @@ export default function Table() {
   const sliderRef = useRef(null);
   const [isAllowed, setIsAllowed] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [hasRefreshed, setHasRefreshed] = useState(false); // To avoid infinite reloads
 
-  useEffect(() => {
+useEffect(() => {
     const checkAccess = async () => {
       try {
         const res = await fetch('https://api64.ipify.org?format=json');
         const data = await res.json();
         const ip = data.ip;
-        const allowedPrefixes = ['2402:e280', '58.84'];
         const allowed = allowedPrefixes.some(prefix => ip?.startsWith(prefix));
         setIsAllowed(allowed);
 
+        // Refresh once if just connected to allowed Wi-Fi
+        if (allowed && !hasRefreshed) {
+          setHasRefreshed(true);
+          window.location.reload(); // Refresh once on successful connection
+        }
       } catch (err) {
         console.error('IP check failed:', err);
       } finally {
         setChecking(false);
       }
     };
-checkAccess();
-    const interval = setInterval(checkAccess, 8000); // recheck every 8 seconds
+
+    // Run immediately
+    checkAccess();
+
+    // Re-run every 10 seconds until access is granted
+    const interval = setInterval(() => {
+      if (!isAllowed && !hasRefreshed) checkAccess();
+    }, 10000); // 10 seconds
+
     return () => clearInterval(interval);
-  },
-  []);
+  }, [isAllowed, hasRefreshed]);
+
 
   const { data: menu } = useSWR('menu', fetchMenu);
 
